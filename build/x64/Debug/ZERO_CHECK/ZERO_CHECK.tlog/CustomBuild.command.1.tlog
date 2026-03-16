@@ -1,0 +1,10 @@
+^C:\USERS\GOPI VAKA\DESKTOP\6_MONTHS\WEB3\BUILD\CMAKEFILES\9E0134B630E160C743520D0E868D883A\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" "-SC:/Users/Gopi Vaka/Desktop/6_Months/web3" "-BC:/Users/Gopi Vaka/Desktop/6_Months/web3/build" --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file "C:/Users/Gopi Vaka/Desktop/6_Months/web3/build/MempoolMonitor.sln"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
