@@ -28,6 +28,55 @@ using json = nlohmann::json;
 std::queue<std::string> tx_queue;  
 std::mutex queue_lock;             
 
+// --- SIMULATION ENGINE (ANVIL) ---
+bool simulate_trade(std::string from, std::string to, std::string value, std::string data) {
+    try {
+        net::io_context ioc;
+        tcp::resolver resolver(ioc);
+        beast::tcp_stream stream(ioc);
+        stream.connect(resolver.resolve("127.0.0.1", "8545"));
+
+        // Ask Anvil to dry-run the exact intercepted transaction
+        json call_params = {
+            {{"from", from}, {"to", to}, {"value", value}, {"data", data}},
+            "latest"
+        };
+
+        json rpc_payload = {
+            {"jsonrpc", "2.0"},
+            {"id", 1},
+            {"method", "eth_call"},
+            {"params", call_params}
+        };
+
+        http::request<http::string_body> req{http::verb::post, "/", 11};
+        req.set(http::field::host, "127.0.0.1");
+        req.set(http::field::content_type, "application/json");
+        req.body() = rpc_payload.dump();
+        req.prepare_payload();
+
+        http::write(stream, req);
+        beast::flat_buffer buffer;
+        http::response<http::string_body> res;
+        http::read(stream, buffer, res);
+
+        stream.socket().shutdown(tcp::socket::shutdown_both);
+
+        json response = json::parse(res.body());
+        
+        // If the simulation returns an error, the trade will fail on mainnet
+        if (response.contains("error")) {
+            std::cout << "    [X] SIMULATION: Transaction will REVERT (Failed/Scam)\n";
+            return false;
+        } else {
+            std::cout << "    [+] SIMULATION: Transaction SUCCESS\n";
+            return true;
+        }
+    } catch(...) {
+        return false;
+    }
+}
+
 // --- CONSUMER: Background Worker ---
 void consumer_thread() {
     try {
@@ -105,7 +154,7 @@ void consumer_thread() {
                     std::cout << "    Gas (Wei):   " << gas_decimal << "\n";
                     std::cout << "    Action:      " << method_name << "\n";
 
-// --- HEX SLICING LOGIC ---
+                    // --- HEX SLICING LOGIC ---
                     if (method_id == "0x7ff36ab5" && input_data.length() >= 458) {
                         // swapExactETHForTokens
                         std::string target_token = "0x" + input_data.substr(418, 40);
@@ -119,15 +168,38 @@ void consumer_thread() {
                         min_tokens_raw.erase(0, std::min(min_tokens_raw.find_first_not_of('0'), min_tokens_raw.size() - 1));
                         std::string min_tokens_hex = "0x" + min_tokens_raw;
 
-                        double eth_spent = 0.0, min_tokens = 0.0;
+                        // --- BIG MATH CONVERSION & MEV LOGIC ---
+                        double eth_spent = 0.0;
+                        double min_tokens = 0.0;
+                        double implied_price = 0.0;
+                        
                         try { 
                             eth_spent = std::stod(eth_spent_hex) / 1e18;
                             min_tokens = std::stod(min_tokens_hex) / 1e18;
+                            
+                            // Calculate the max price they are willing to pay per token
+                            if (min_tokens > 0) {
+                                implied_price = eth_spent / min_tokens;
+                            }
                         } catch(...) {}
 
-                        std::cout << "    Target:      " << target_token << " (Token being bought)\n";
+                        std::cout << "    Target:      " << target_token << "\n";
                         std::cout << "    ETH Spent:   " << std::fixed << std::setprecision(6) << eth_spent << " ETH\n";
                         std::cout << "    Min Tokens:  " << std::fixed << std::setprecision(2) << min_tokens << "\n";
+                        std::cout << "    Max Price:   " << std::fixed << std::setprecision(8) << implied_price << " ETH/Token\n";
+
+// Extract exact sender and data for the simulation
+                        std::string from_addr = tx_details["result"]["from"];
+                        std::string input_hex = tx_details["result"]["input"];
+                        
+                        // Fire the Anvil simulation
+                        simulate_trade(from_addr, to_address, eth_spent_hex, input_hex);
+
+                        // --- MEV TARGET DETECTION ---
+                        // If they are spending more than 0.5 ETH, they are a target for a sandwich attack
+                        if (eth_spent >= 0.5) {
+                            std::cout << "    [$$$] WHALE DETECTED: PRIME MEV SANDWICH TARGET [$$$]\n";
+                        }
 
                     } else if (method_id == "0x38ed1739" && input_data.length() >= 522) {
                         // swapExactTokensForTokens (Token to Token swap)
@@ -194,7 +266,7 @@ int main() {
                     std::lock_guard<std::mutex> lock(queue_lock);
                     tx_queue.push(tx_hash);
                 }
-                std::cout << "." << std::flush;
+                //std::cout << "." << std::flush;
             }
         }
     } catch(std::exception const& e) {
