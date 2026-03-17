@@ -11,7 +11,11 @@ find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 
 # Create the executable
-add_executable(MempoolMonitor mempool_monitor.cpp)
+add_executable(MempoolMonitor 
+    main.cpp 
+    WorkerThread.cpp 
+    AnvilSimulator.cpp
+)
 
 # Link the libraries to your code
 target_link_libraries(MempoolMonitor PRIVATE
