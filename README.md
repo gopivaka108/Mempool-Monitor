@@ -15,6 +15,12 @@ To run this project locally, you need:
 3.  **Foundry:** [Foundry/Anvil](https://getfoundry.sh/) installed for local blockchain execution.
 4.  **Alchemy Key:** An Ethereum Mainnet API key from Alchemy.
 
+## Build Instructions
+This project uses CMake. To build the monitor:
+1. `mkdir build && cd build`
+2. `cmake ..`
+3. `make`
+
 ## How to Test and Run
 
 **1. Start the Local Fork**
